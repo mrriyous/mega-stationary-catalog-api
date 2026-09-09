@@ -16,14 +16,21 @@ class DemoUserSeeder extends Seeder
     public function run(): void
     {
         User::updateOrCreate(['email' => 'admin@mega.test'], [
-            'name' => 'Mega Admin', 'password' => 'password', 'role' => 'admin',
-        ]);
-        User::updateOrCreate(['email' => 'user@mega.test'], [
-            'name' => 'Mega User', 'password' => 'password', 'role' => 'user',
+            'name' => 'Mega Admin', 'username' => 'admin', 'password' => 'password', 'role' => 'admin',
         ]);
 
-        foreach (['Informasi', 'Tutorial', 'Promo', 'Produk'] as $order => $name) {
-            $category = Category::firstOrCreate(['name' => $name], ['sort_order' => $order]);
+        User::updateOrCreate(['email' => 'user@mega.test'], [
+            'name' => 'Mega User', 'username' => 'user', 'password' => 'password', 'role' => 'user',
+        ]);
+
+        $categories = [
+            ['name' => 'Alat Tulis', 'sort_order' => 0],
+        ];
+        foreach ($categories as $categoryData) {
+            $category = Category::firstOrCreate(
+                ['name' => $categoryData['name']],
+                ['sort_order' => $categoryData['sort_order']],
+            );
             if (! SyncChange::where('entity_type', 'category')->where('entity_id', $category->id)->exists()) {
                 SyncChange::create([
                     'entity_type' => 'category',

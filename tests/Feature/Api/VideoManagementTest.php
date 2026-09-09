@@ -25,6 +25,7 @@ class VideoManagementTest extends TestCase
             'category_id' => $category->id,
             'product_code' => 'PRD-001',
             'product_name' => 'Buku Tulis',
+            'description' => 'Buku tulis berkualitas untuk sekolah.',
             'normal_price' => 'Rp 20.000',
             'wholesale_price' => 'Rp 17.000',
             'video' => UploadedFile::fake()->create('product.mp4', 250, 'video/mp4'),
@@ -33,6 +34,7 @@ class VideoManagementTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('data.product_code', 'PRD-001')
+            ->assertJsonPath('data.description', 'Buku tulis berkualitas untuk sekolah.')
             ->assertJsonPath('data.category_id', $category->id)
             ->assertJsonStructure(['data' => ['video_url', 'cover_url', 'video_size_bytes']]);
         $this->assertDatabaseHas('videos', [
@@ -45,7 +47,8 @@ class VideoManagementTest extends TestCase
 
         $this->getJson('/api/videos')->assertOk()
             ->assertJsonPath('meta.total', 1)
-            ->assertJsonPath('data.0.product_name', 'Buku Tulis');
+            ->assertJsonPath('data.0.product_name', 'Buku Tulis')
+            ->assertJsonPath('data.0.description', 'Buku tulis berkualitas untuk sekolah.');
     }
 
     public function test_returns_403_when_regular_user_uploads_video(): void

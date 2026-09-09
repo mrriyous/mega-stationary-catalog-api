@@ -11,7 +11,7 @@ class Video extends Model
     use HasFactory;
 
     protected $fillable = [
-        'category_id', 'product_code', 'product_name', 'normal_price',
+        'category_id', 'product_code', 'product_name', 'description', 'normal_price',
         'wholesale_price', 'video_path', 'cover_path', 'video_size_bytes',
     ];
 

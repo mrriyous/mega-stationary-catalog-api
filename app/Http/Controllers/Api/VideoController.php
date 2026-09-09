@@ -143,6 +143,7 @@ class VideoController extends Controller
             'category_id' => ['required', 'integer', 'exists:categories,id'],
             'product_code' => ['required', 'string', 'max:100', Rule::unique('videos')->ignore($video)],
             'product_name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:5000'],
             'normal_price' => ['required', 'string', 'max:100'],
             'wholesale_price' => ['required', 'string', 'max:100'],
             'video' => [$video ? 'nullable' : 'required', 'file', 'mimetypes:video/mp4,video/quicktime,video/webm', 'max:512000'],

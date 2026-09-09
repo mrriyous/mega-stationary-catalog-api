@@ -22,6 +22,7 @@ class VideoFactory extends Factory
             'category_id' => Category::factory(),
             'product_code' => fake()->unique()->bothify('PRD-####'),
             'product_name' => fake()->words(3, true),
+            'description' => fake()->sentence(),
             'normal_price' => 'Rp '.fake()->numberBetween(5, 100).'.000',
             'wholesale_price' => 'Rp '.fake()->numberBetween(3, 80).'.000',
             'video_path' => 'videos/'.fake()->uuid().'.mp4',

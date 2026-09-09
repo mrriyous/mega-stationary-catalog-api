@@ -13,24 +13,24 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $credentials = $request->validate([
-            'email' => ['required', 'email'],
+            'username' => ['required', 'string', 'max:100'],
             'password' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $user = User::where('email', $credentials['email'])->first();
+        $user = User::where('username', strtolower($credentials['username']))->first();
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            return response()->json(['message' => 'Email or password is incorrect.'], 422);
+            return response()->json(['message' => 'Username or password is incorrect.'], 422);
         }
 
         $token = $user->createToken($credentials['device_name'] ?? 'flutter-app')->plainTextToken;
 
-        return response()->json(['token' => $token, 'user' => $user->only('id', 'name', 'email', 'role')]);
+        return response()->json(['token' => $token, 'user' => $user->only('id', 'name', 'username', 'role')]);
     }
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json(['user' => $request->user()->only('id', 'name', 'email', 'role')]);
+        return response()->json(['user' => $request->user()->only('id', 'name', 'username', 'role')]);
     }
 
     public function logout(Request $request): JsonResponse

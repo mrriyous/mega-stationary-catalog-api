@@ -12,12 +12,15 @@ class SyncController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $data = $request->validate(['cursor' => ['nullable', 'integer', 'min:0']]);
+
         $cursor = (int) ($data['cursor'] ?? 0);
+
         $latestVideoChangeIds = SyncChange::query()
             ->selectRaw('MAX(id)')
             ->where('id', '>', $cursor)
             ->where('entity_type', 'video')
             ->groupBy('entity_id');
+
         $changes = SyncChange::query()
             ->where('id', '>', $cursor)
             ->where(function ($query) use ($latestVideoChangeIds) {

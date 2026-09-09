@@ -24,6 +24,7 @@ final class SyncPayload
             'category_id' => $video->category_id,
             'product_code' => $video->product_code,
             'product_name' => $video->product_name,
+            'description' => $video->description,
             'normal_price' => $video->normal_price,
             'wholesale_price' => $video->wholesale_price,
             'video_size_bytes' => $video->video_size_bytes,

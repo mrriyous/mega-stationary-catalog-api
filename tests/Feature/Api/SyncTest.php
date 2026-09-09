@@ -36,4 +36,11 @@ class SyncTest extends TestCase
     {
         $this->getJson('/api/sync?cursor=0')->assertUnauthorized();
     }
+
+    public function test_returns_json_401_for_api_request_without_accept_header(): void
+    {
+        $this->get('/api/categories')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated.');
+    }
 }

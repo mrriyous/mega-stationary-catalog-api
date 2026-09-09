@@ -13,7 +13,20 @@ class SyncController extends Controller
     {
         $data = $request->validate(['cursor' => ['nullable', 'integer', 'min:0']]);
         $cursor = (int) ($data['cursor'] ?? 0);
-        $changes = SyncChange::where('id', '>', $cursor)->orderBy('id')->limit(200)->get();
+        $latestVideoChangeIds = SyncChange::query()
+            ->selectRaw('MAX(id)')
+            ->where('id', '>', $cursor)
+            ->where('entity_type', 'video')
+            ->groupBy('entity_id');
+        $changes = SyncChange::query()
+            ->where('id', '>', $cursor)
+            ->where(function ($query) use ($latestVideoChangeIds) {
+                $query->where('entity_type', '!=', 'video')
+                    ->orWhereIn('id', $latestVideoChangeIds);
+            })
+            ->orderBy('id')
+            ->limit(200)
+            ->get();
 
         return response()->json([
             'changes' => $changes->map(fn (SyncChange $change) => [

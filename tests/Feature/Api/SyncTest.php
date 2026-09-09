@@ -68,4 +68,67 @@ class SyncTest extends TestCase
             ->assertJsonPath('changes.0.entity_id', 201)
             ->assertJsonPath('has_more', false);
     }
+
+    public function test_only_latest_change_for_same_entity_is_returned(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+        SyncChange::create([
+            'entity_type' => 'video',
+            'entity_id' => 42,
+            'action' => 'upsert',
+            'payload' => ['id' => 42, 'product_name' => 'Original'],
+        ]);
+        SyncChange::create([
+            'entity_type' => 'video',
+            'entity_id' => 42,
+            'action' => 'upsert',
+            'payload' => ['id' => 42, 'product_name' => 'Edited'],
+        ]);
+        $latest = SyncChange::create([
+            'entity_type' => 'video',
+            'entity_id' => 42,
+            'action' => 'delete',
+            'payload' => ['id' => 42],
+        ]);
+
+        $this->getJson('/api/sync?cursor=0')
+            ->assertOk()
+            ->assertJsonCount(1, 'changes')
+            ->assertJsonPath('changes.0.cursor', $latest->id)
+            ->assertJsonPath('changes.0.entity_type', 'video')
+            ->assertJsonPath('changes.0.entity_id', 42)
+            ->assertJsonPath('changes.0.action', 'delete')
+            ->assertJsonPath('next_cursor', $latest->id)
+            ->assertJsonPath('has_more', false);
+    }
+
+    public function test_category_history_is_preserved_before_compacted_video(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+        SyncChange::create([
+            'entity_type' => 'category',
+            'entity_id' => 5,
+            'action' => 'upsert',
+            'payload' => ['id' => 5, 'name' => 'Original'],
+        ]);
+        SyncChange::create([
+            'entity_type' => 'video',
+            'entity_id' => 5,
+            'action' => 'upsert',
+            'payload' => ['id' => 5],
+        ]);
+        SyncChange::create([
+            'entity_type' => 'category',
+            'entity_id' => 5,
+            'action' => 'upsert',
+            'payload' => ['id' => 5, 'name' => 'Edited'],
+        ]);
+
+        $this->getJson('/api/sync?cursor=0')
+            ->assertOk()
+            ->assertJsonCount(3, 'changes')
+            ->assertJsonPath('changes.0.entity_type', 'category')
+            ->assertJsonPath('changes.1.entity_type', 'video')
+            ->assertJsonPath('changes.2.entity_type', 'category');
+    }
 }

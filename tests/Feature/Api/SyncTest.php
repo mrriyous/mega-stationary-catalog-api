@@ -43,4 +43,29 @@ class SyncTest extends TestCase
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Unauthenticated.');
     }
+
+    public function test_more_than_200_changes_are_exposed_in_cursor_batches(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+        for ($index = 1; $index <= 201; $index++) {
+            SyncChange::create([
+                'entity_type' => 'category',
+                'entity_id' => $index,
+                'action' => 'delete',
+                'payload' => ['id' => $index],
+            ]);
+        }
+
+        $firstBatch = $this->getJson('/api/sync?cursor=0')
+            ->assertOk()
+            ->assertJsonCount(200, 'changes')
+            ->assertJsonPath('has_more', true);
+
+        $cursor = $firstBatch->json('next_cursor');
+        $this->getJson("/api/sync?cursor={$cursor}")
+            ->assertOk()
+            ->assertJsonCount(1, 'changes')
+            ->assertJsonPath('changes.0.entity_id', 201)
+            ->assertJsonPath('has_more', false);
+    }
 }

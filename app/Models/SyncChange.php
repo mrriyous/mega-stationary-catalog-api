@@ -10,6 +10,9 @@ class SyncChange extends Model
 
     protected function casts(): array
     {
-        return ['payload' => 'array'];
+        return [
+            'entity_id' => 'integer',
+            'payload' => 'array',
+        ];
     }
 }

@@ -17,7 +17,10 @@ class Video extends Model
 
     protected function casts(): array
     {
-        return ['video_size_bytes' => 'integer'];
+        return [
+            'category_id' => 'integer',
+            'video_size_bytes' => 'integer',
+        ];
     }
 
     public function category(): BelongsTo

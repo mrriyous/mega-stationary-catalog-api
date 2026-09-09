@@ -63,7 +63,8 @@ class VideoManagementTest extends TestCase
             'normal_price' => 'Rp 5.000',
             'wholesale_price' => 'Rp 4.000',
             'video' => UploadedFile::fake()->create('product.mp4', 10, 'video/mp4'),
-        ], ['Accept' => 'application/json'])->assertForbidden();
+        ], ['Accept' => 'application/json'])->assertForbidden()
+            ->assertJsonPath('message', 'Akses admin diperlukan.');
     }
 
     public function test_listing_filters_by_category_and_searches_code_or_name(): void
@@ -106,5 +107,79 @@ class VideoManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.name', 'Produk')
             ->assertJsonPath('data.0.videos_count', 2);
+    }
+
+    public function test_admin_can_upload_videos_with_the_same_product_code(): void
+    {
+        Storage::fake('local');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $category = Category::factory()->create();
+
+        $this->post('/api/videos', [
+            'category_id' => $category->id,
+            'product_code' => 'PRD-001',
+            'product_name' => 'Buku Tulis',
+            'normal_price' => 'Rp 20.000',
+            'wholesale_price' => 'Rp 17.000',
+            'video' => UploadedFile::fake()->create('product.mp4', 10, 'video/mp4'),
+        ], ['Accept' => 'application/json'])->assertCreated();
+        $this->post('/api/videos', [
+            'category_id' => $category->id,
+            'product_code' => 'PRD-001',
+            'product_name' => 'Buku Gambar',
+            'normal_price' => 'Rp 25.000',
+            'wholesale_price' => 'Rp 20.000',
+            'video' => UploadedFile::fake()->create('product-dua.mp4', 10, 'video/mp4'),
+        ], ['Accept' => 'application/json'])->assertCreated();
+
+        $this->assertSame(2, Video::where('product_code', 'PRD-001')->count());
+    }
+
+    public function test_admin_soft_deletes_video_and_keeps_media_files(): void
+    {
+        Storage::fake('local');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $category = Category::factory()->create();
+
+        $this->post('/api/videos', [
+            'category_id' => $category->id,
+            'product_code' => 'PRD-009',
+            'product_name' => 'Penghapus',
+            'normal_price' => 'Rp 3.000',
+            'wholesale_price' => 'Rp 2.500',
+            'video' => UploadedFile::fake()->create('product.mp4', 10, 'video/mp4'),
+            'cover' => UploadedFile::fake()->image('cover.jpg'),
+        ], ['Accept' => 'application/json'])->assertCreated();
+
+        $video = Video::where('product_code', 'PRD-009')->firstOrFail();
+
+        $this->deleteJson("/api/videos/{$video->id}")->assertNoContent();
+
+        $this->assertSoftDeleted($video);
+        Storage::disk('local')->assertExists($video->video_path);
+        Storage::disk('local')->assertExists($video->cover_path);
+        $this->getJson('/api/videos')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
+        $this->getJson("/api/videos/{$video->id}")->assertNotFound();
+    }
+
+    public function test_returns_422_when_video_uses_soft_deleted_category(): void
+    {
+        Storage::fake('local');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $category = Category::factory()->create();
+        $category->delete();
+
+        $this->post('/api/videos', [
+            'category_id' => $category->id,
+            'product_code' => 'PRD-010',
+            'product_name' => 'Spidol',
+            'normal_price' => 'Rp 8.000',
+            'wholesale_price' => 'Rp 7.000',
+            'video' => UploadedFile::fake()->create('product.mp4', 10, 'video/mp4'),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['category_id']);
     }
 }

@@ -127,12 +127,10 @@ class VideoController extends Controller
     {
         $this->authorizeAdmin($request);
         $id = $video->id;
-        $paths = array_filter([$video->video_path, $video->cover_path]);
         DB::transaction(function () use ($video, $id) {
             $video->delete();
             SyncChange::create(['entity_type' => 'video', 'entity_id' => $id, 'action' => 'delete', 'payload' => ['id' => $id]]);
         });
-        Storage::delete($paths);
 
         return response()->json(status: 204);
     }
@@ -140,8 +138,8 @@ class VideoController extends Controller
     private function validated(Request $request, ?Video $video = null): array
     {
         return $request->validate([
-            'category_id' => ['required', 'integer', 'exists:categories,id'],
-            'product_code' => ['required', 'string', 'max:100', Rule::unique('videos')->ignore($video)],
+            'category_id' => ['required', 'integer', Rule::exists('categories', 'id')->whereNull('deleted_at')],
+            'product_code' => ['required', 'string', 'max:100'],
             'product_name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'normal_price' => ['required', 'string', 'max:100'],
@@ -154,7 +152,7 @@ class VideoController extends Controller
 
     private function authorizeAdmin(Request $request): void
     {
-        abort_unless($request->user()->isAdmin(), 403, 'Admin access required.');
+        abort_unless($request->user()->isAdmin(), 403, 'Akses admin diperlukan.');
     }
 
     private function record(Video $video): void

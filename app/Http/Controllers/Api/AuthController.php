@@ -20,7 +20,7 @@ class AuthController extends Controller
 
         $user = User::where('username', strtolower($credentials['username']))->first();
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            return response()->json(['message' => 'Username or password is incorrect.'], 422);
+            return response()->json(['message' => 'Username atau kata sandi salah.'], 422);
         }
 
         $token = $user->createToken($credentials['device_name'] ?? 'flutter-app')->plainTextToken;
@@ -37,6 +37,6 @@ class AuthController extends Controller
     {
         $request->user()->currentAccessToken()?->delete();
 
-        return response()->json(['message' => 'Logged out.']);
+        return response()->json(['message' => 'Berhasil keluar.']);
     }
 }

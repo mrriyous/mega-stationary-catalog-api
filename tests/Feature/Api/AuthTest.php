@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class AuthTest extends TestCase
@@ -35,6 +36,40 @@ class AuthTest extends TestCase
             'username' => 'user',
             'password' => 'wrong-password',
             'device_name' => 'test-phone',
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Username atau kata sandi salah.');
+    }
+
+    public function test_returns_422_when_soft_deleted_user_logs_in(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'password' => 'password',
+        ]);
+        $user->delete();
+
+        $this->postJson('/api/login', [
+            'username' => 'admin',
+            'password' => 'password',
+            'device_name' => 'test-phone',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Username atau kata sandi salah.');
+    }
+
+    public function test_usernames_are_not_required_to_be_unique(): void
+    {
+        User::factory()->create(['username' => 'kasir']);
+        User::factory()->create(['username' => 'kasir', 'email' => 'kasir-dua@mega.test']);
+
+        $this->assertSame(2, User::where('username', 'kasir')->count());
+    }
+
+    public function test_logout_returns_indonesian_message(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $this->postJson('/api/logout')
+            ->assertOk()
+            ->assertJsonPath('message', 'Berhasil keluar.');
     }
 }

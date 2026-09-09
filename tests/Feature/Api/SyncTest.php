@@ -42,7 +42,7 @@ class SyncTest extends TestCase
     {
         $this->get('/api/categories')
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Unauthenticated.');
+            ->assertJsonPath('message', 'Tidak terautentikasi.');
     }
 
     public function test_more_than_200_changes_are_exposed_in_cursor_batches(): void
@@ -158,5 +158,23 @@ class SyncTest extends TestCase
             ->assertJsonCount(0, 'categories')
             ->assertJsonCount(1, 'videos')
             ->assertJsonPath('has_more', false);
+    }
+
+    public function test_bootstrap_excludes_soft_deleted_categories_and_videos(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+        $keptCategory = Category::factory()->create(['name' => 'Aktif']);
+        $removedCategory = Category::factory()->create(['name' => 'Arsip']);
+        $keptVideo = Video::factory()->for($keptCategory)->create();
+        $removedVideo = Video::factory()->for($keptCategory)->create();
+        $removedCategory->delete();
+        $removedVideo->delete();
+
+        $this->getJson('/api/sync/bootstrap?after_video_id=0')
+            ->assertOk()
+            ->assertJsonCount(1, 'categories')
+            ->assertJsonPath('categories.0.name', 'Aktif')
+            ->assertJsonCount(1, 'videos')
+            ->assertJsonPath('videos.0.id', $keptVideo->id);
     }
 }

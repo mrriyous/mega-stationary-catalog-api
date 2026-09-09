@@ -32,7 +32,7 @@ class CategoryController extends Controller
     public function store(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
-        $data = $request->validate(['name' => ['required', 'string', 'max:100', 'unique:categories,name']]);
+        $data = $request->validate(['name' => ['required', 'string', 'max:100']]);
         $category = Category::create([...$data, 'sort_order' => (Category::max('sort_order') ?? -1) + 1]);
         $this->record($category);
 
@@ -53,7 +53,7 @@ class CategoryController extends Controller
     public function update(Request $request, Category $category): JsonResponse
     {
         $this->authorizeAdmin($request);
-        $data = $request->validate(['name' => ['required', 'string', 'max:100', Rule::unique('categories')->ignore($category)]]);
+        $data = $request->validate(['name' => ['required', 'string', 'max:100']]);
         $category->update($data);
         $this->record($category);
 
@@ -67,7 +67,7 @@ class CategoryController extends Controller
     {
         $this->authorizeAdmin($request);
         if ($category->videos()->exists()) {
-            return response()->json(['message' => 'Category is still used by videos.'], 422);
+            return response()->json(['message' => 'Kategori masih digunakan oleh video.'], 422);
         }
         $id = $category->id;
         $category->delete();
@@ -79,7 +79,10 @@ class CategoryController extends Controller
     public function reorder(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
-        $data = $request->validate(['ids' => ['required', 'array'], 'ids.*' => ['integer', 'exists:categories,id']]);
+        $data = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['integer', Rule::exists('categories', 'id')->whereNull('deleted_at')],
+        ]);
         DB::transaction(function () use ($data) {
             foreach ($data['ids'] as $order => $id) {
                 $category = Category::findOrFail($id);
@@ -93,7 +96,7 @@ class CategoryController extends Controller
 
     private function authorizeAdmin(Request $request): void
     {
-        abort_unless($request->user()->isAdmin(), 403, 'Admin access required.');
+        abort_unless($request->user()->isAdmin(), 403, 'Akses admin diperlukan.');
     }
 
     private function record(Category $category): void

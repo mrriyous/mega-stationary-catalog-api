@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Category;
 use App\Models\SyncChange;
 use App\Models\User;
+use App\Models\Video;
 use App\Support\SyncPayload;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -130,5 +131,32 @@ class SyncTest extends TestCase
             ->assertJsonPath('changes.0.entity_type', 'category')
             ->assertJsonPath('changes.1.entity_type', 'video')
             ->assertJsonPath('changes.2.entity_type', 'category');
+    }
+
+    public function test_bootstrap_returns_current_categories_before_paginated_videos(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+        $category = Category::factory()->create(['name' => 'Current category']);
+        Video::factory()->count(51)->for($category)->create();
+        $snapshotCursor = SyncChange::create([
+            'entity_type' => 'video',
+            'entity_id' => 999,
+            'action' => 'delete',
+            'payload' => ['id' => 999],
+        ])->id;
+
+        $first = $this->getJson('/api/sync/bootstrap?after_video_id=0')
+            ->assertOk()
+            ->assertJsonPath('snapshot_cursor', $snapshotCursor)
+            ->assertJsonPath('categories.0.name', 'Current category')
+            ->assertJsonCount(50, 'videos')
+            ->assertJsonPath('has_more', true);
+
+        $lastVideoId = $first->json('next_video_id');
+        $this->getJson("/api/sync/bootstrap?after_video_id={$lastVideoId}")
+            ->assertOk()
+            ->assertJsonCount(0, 'categories')
+            ->assertJsonCount(1, 'videos')
+            ->assertJsonPath('has_more', false);
     }
 }

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\MediaController;
+use App\Http\Controllers\Api\SyncBootstrapController;
 use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\Api\VideoController;
 use Illuminate\Support\Facades\Route;
@@ -13,6 +14,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/sync', SyncController::class);
+    Route::get('/sync/bootstrap', SyncBootstrapController::class);
     Route::post('/categories/reorder', [CategoryController::class, 'reorder']);
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('videos', VideoController::class);

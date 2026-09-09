@@ -21,12 +21,22 @@ class VideoController extends Controller
     {
         $videos = Video::query()
             ->when($request->integer('category_id'), fn ($query, $id) => $query->where('category_id', $id))
+            ->when($request->string('search')->trim()->toString(), function ($query, $search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('product_code', 'like', "%{$search}%")
+                        ->orWhere('product_name', 'like', "%{$search}%");
+                });
+            })
             ->latest('updated_at')
             ->paginate(min($request->integer('per_page', 24), 100));
 
         return response()->json([
             'data' => collect($videos->items())->map(fn (Video $video) => SyncPayload::video($video)),
-            'meta' => ['current_page' => $videos->currentPage(), 'last_page' => $videos->lastPage(), 'total' => $videos->total()],
+            'meta' => [
+                'current_page' => $videos->currentPage(),
+                'last_page' => $videos->lastPage(),
+                'total' => $videos->total(),
+            ],
         ]);
     }
 

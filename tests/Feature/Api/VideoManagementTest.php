@@ -62,4 +62,46 @@ class VideoManagementTest extends TestCase
             'video' => UploadedFile::fake()->create('product.mp4', 10, 'video/mp4'),
         ], ['Accept' => 'application/json'])->assertForbidden();
     }
+
+    public function test_listing_filters_by_category_and_searches_code_or_name(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $stationery = Category::factory()->create(['name' => 'Stationery']);
+        $promo = Category::factory()->create(['name' => 'Promo']);
+        Video::factory()->for($stationery)->create([
+            'product_code' => 'BOOK-001',
+            'product_name' => 'Buku Tulis',
+        ]);
+        Video::factory()->for($stationery)->create([
+            'product_code' => 'PEN-001',
+            'product_name' => 'Pulpen Biru',
+        ]);
+        Video::factory()->for($promo)->create([
+            'product_code' => 'BOOK-PROMO',
+            'product_name' => 'Paket Promo',
+        ]);
+
+        $this->getJson("/api/videos?category_id={$stationery->id}&search=book&per_page=1")
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('meta.last_page', 1)
+            ->assertJsonPath('data.0.product_code', 'BOOK-001');
+
+        $this->getJson('/api/videos?search=Biru')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.product_code', 'PEN-001');
+    }
+
+    public function test_category_listing_reports_live_server_video_counts(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $category = Category::factory()->create(['name' => 'Produk']);
+        Video::factory()->count(2)->for($category)->create();
+
+        $this->getJson('/api/categories')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Produk')
+            ->assertJsonPath('data.0.videos_count', 2);
+    }
 }

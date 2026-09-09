@@ -18,7 +18,12 @@ class CategoryController extends Controller
      */
     public function index(): JsonResponse
     {
-        return response()->json(['data' => Category::orderBy('sort_order')->get()]);
+        return response()->json([
+            'data' => Category::query()
+                ->withCount('videos')
+                ->orderBy('sort_order')
+                ->get(),
+        ]);
     }
 
     /**

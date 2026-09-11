@@ -25,7 +25,7 @@ class AuthTest extends TestCase
             'device_name' => 'test-phone',
         ])->assertOk()
             ->assertJsonPath('user.role', 'admin')
-            ->assertJsonStructure(['token', 'user' => ['id', 'name', 'username', 'role']]);
+            ->assertJsonStructure(['token', 'user' => ['id', 'name', 'username', 'role', 'normal_price_access', 'wholesale_price_access']]);
     }
 
     public function test_returns_422_when_credentials_are_invalid(): void

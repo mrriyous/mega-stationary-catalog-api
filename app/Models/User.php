@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Traits\AppActivityLog;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -12,16 +13,40 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'username', 'email', 'password', 'role'])]
+#[Fillable(['name', 'username', 'email', 'password', 'role', 'normal_price_access', 'wholesale_price_access'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+    use AppActivityLog, HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+
+    /**
+     * @return list<string>
+     */
+    protected function activityLogExcept(): array
+    {
+        return ['password', 'remember_token'];
+    }
 
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    public function priceAccess(): array
+    {
+        return [
+            'normal_price_access' => $this->isAdmin() || $this->normal_price_access,
+            'wholesale_price_access' => $this->isAdmin() || $this->wholesale_price_access,
+        ];
+    }
+
+    public function apiData(): array
+    {
+        return [
+            ...$this->only('id', 'name', 'username', 'role'),
+            ...$this->priceAccess(),
+        ];
     }
 
     /**
@@ -34,6 +59,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'normal_price_access' => 'boolean',
+            'wholesale_price_access' => 'boolean',
         ];
     }
 }

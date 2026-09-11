@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Category;
+use App\Models\User;
 use App\Models\Video;
 
 final class SyncPayload
@@ -17,16 +18,19 @@ final class SyncPayload
         ];
     }
 
-    public static function video(Video $video): array
+    public static function video(Video $video, ?User $viewer = null): array
     {
+        $canViewNormal = ! $viewer || $viewer->isAdmin() || $viewer->normal_price_access;
+        $canViewWholesale = ! $viewer || $viewer->isAdmin() || $viewer->wholesale_price_access;
+
         return [
             'id' => $video->id,
             'category_id' => $video->category_id,
             'product_code' => $video->product_code,
             'product_name' => $video->product_name,
             'description' => $video->description,
-            'normal_price' => $video->normal_price,
-            'wholesale_price' => $video->wholesale_price,
+            'normal_price' => $canViewNormal ? $video->normal_price : null,
+            'wholesale_price' => $canViewWholesale ? $video->wholesale_price : null,
             'video_size_bytes' => $video->video_size_bytes,
             'video_extension' => pathinfo($video->video_path, PATHINFO_EXTENSION),
             'cover_extension' => $video->cover_path ? pathinfo($video->cover_path, PATHINFO_EXTENSION) : null,

@@ -1,6 +1,6 @@
-# Mega Stationary Catalog API
+# Mega Stationery Catalog API
 
-Laravel API serving as the authoritative data source for the Mega Stationary Catalog mobile app.
+Laravel API serving as the authoritative data source for the Mega Stationery Catalog mobile app.
 
 ## Features
 

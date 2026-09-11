@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\SyncChange;
 use App\Models\Video;
+use App\Models\VideoSortData;
+use App\Services\SyncChangeService;
+use App\Services\VideoCoverService;
+use App\Services\VideoSortService;
 use App\Support\SyncPayload;
+use App\Support\SystemErrorLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,30 +18,43 @@ use Illuminate\Validation\Rule;
 
 class VideoController extends Controller
 {
+    public function __construct(
+        private readonly VideoSortService $videoSorts,
+        private readonly VideoCoverService $videoCovers,
+        private readonly SyncChangeService $syncChanges,
+    ) {}
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): JsonResponse
     {
+        $sortData = VideoSortData::query()
+            ->selectRaw('video_id, MIN(category_order) as category_order, MIN(video_order) as video_order')
+            ->groupBy('video_id');
         $videos = Video::query()
-            ->when($request->integer('category_id'), fn ($query, $id) => $query->where('category_id', $id))
+            ->leftJoinSub($sortData, 'video_sort', 'video_sort.video_id', '=', 'videos.id')
+            ->select('videos.*')
+            ->when($request->integer('category_id'), fn ($query, $id) => $query->where('videos.category_id', $id))
             ->when($request->string('search')->trim()->toString(), function ($query, $search) {
                 $query->where(function ($query) use ($search) {
-                    $query->where('product_code', 'like', "%{$search}%")
-                        ->orWhere('product_name', 'like', "%{$search}%");
+                    $query->where('videos.product_code', 'like', "%{$search}%")
+                        ->orWhere('videos.product_name', 'like', "%{$search}%")
+                        ->orWhere('videos.description', 'like', "%{$search}%");
                 });
             })
-            ->latest('updated_at')
+            ->orderByRaw('COALESCE(video_sort.category_order, 2147483647)')
+            ->orderByRaw('COALESCE(video_sort.video_order, 2147483647)')
+            ->orderBy('videos.id')
             ->paginate(min($request->integer('per_page', 24), 100));
+        $data = collect($videos->items())->map(fn (Video $video) => SyncPayload::video($video, $request->user()));
+        $meta = [
+            'current_page' => $videos->currentPage(),
+            'last_page' => $videos->lastPage(),
+            'total' => $videos->total(),
+        ];
 
-        return response()->json([
-            'data' => collect($videos->items())->map(fn (Video $video) => SyncPayload::video($video)),
-            'meta' => [
-                'current_page' => $videos->currentPage(),
-                'last_page' => $videos->lastPage(),
-                'total' => $videos->total(),
-            ],
-        ]);
+        return response()->json(['data' => $data, 'meta' => $meta]);
     }
 
     /**
@@ -45,13 +62,18 @@ class VideoController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $this->authorizeAdmin($request);
         $data = $this->validated($request);
         $videoFile = $request->file('video');
         $coverFile = $request->file('cover');
         $videoPath = $videoFile->store('videos');
         $coverPath = $coverFile?->store('covers');
-
+        if (! $coverPath) {
+            try {
+                $coverPath = $this->videoCovers->generate($videoPath);
+            } catch (\Throwable $error) {
+                SystemErrorLogger::record($error, $request);
+            }
+        }
         try {
             $video = DB::transaction(function () use ($data, $videoFile, $videoPath, $coverPath) {
                 $video = Video::create([
@@ -60,7 +82,8 @@ class VideoController extends Controller
                     'cover_path' => $coverPath,
                     'video_size_bytes' => $videoFile->getSize(),
                 ]);
-                $this->record($video);
+                $this->videoSorts->createFor($video);
+                $this->syncChanges->recordVideo($video);
 
                 return $video;
             });
@@ -69,15 +92,19 @@ class VideoController extends Controller
             throw $error;
         }
 
-        return response()->json(['data' => SyncPayload::video($video)], 201);
+        $payload = SyncPayload::video($video);
+
+        return response()->json(['data' => $payload], 201);
     }
 
     /**
      * Display the specified resource.
      */
-    public function show(Video $video): JsonResponse
+    public function show(Request $request, Video $video): JsonResponse
     {
-        return response()->json(['data' => SyncPayload::video($video)]);
+        $payload = SyncPayload::video($video, $request->user());
+
+        return response()->json(['data' => $payload]);
     }
 
     /**
@@ -85,7 +112,6 @@ class VideoController extends Controller
      */
     public function update(Request $request, Video $video): JsonResponse
     {
-        $this->authorizeAdmin($request);
         $data = $this->validated($request, $video);
         $newVideo = $request->file('video');
         $newCover = $request->file('cover');
@@ -95,16 +121,36 @@ class VideoController extends Controller
         $newCoverPath = $newCover?->store('covers');
         $oldVideoPath = $video->video_path;
         $oldCoverPath = $video->cover_path;
+        $previousCategoryId = (int) $video->category_id;
+        if (! $newCoverPath && ($removeCover || ! $oldCoverPath)) {
+            try {
+                $newCoverPath = $this->videoCovers->generate($newVideoPath ?? $oldVideoPath);
+                $removeCover = false;
+            } catch (\Throwable $error) {
+                SystemErrorLogger::record($error, $request);
+            }
+        }
 
         try {
-            DB::transaction(function () use ($video, $data, $newVideo, $newVideoPath, $newCoverPath, $removeCover) {
+            $video = DB::transaction(function () use ($video, $data, $newVideo, $newVideoPath, $newCoverPath, $removeCover, $previousCategoryId) {
+                $videoPath = $newVideoPath ?? $video->video_path;
+                $coverPath = $newCoverPath ?? $video->cover_path;
+                if ($removeCover) {
+                    $coverPath = null;
+                }
+                $videoSize = $newVideo?->getSize() ?? $video->video_size_bytes;
+
                 $video->update([
                     ...$data,
-                    'video_path' => $newVideoPath ?? $video->video_path,
-                    'cover_path' => $removeCover ? null : ($newCoverPath ?? $video->cover_path),
-                    'video_size_bytes' => $newVideo?->getSize() ?? $video->video_size_bytes,
+                    'video_path' => $videoPath,
+                    'cover_path' => $coverPath,
+                    'video_size_bytes' => $videoSize,
                 ]);
-                $this->record($video->fresh());
+                $this->videoSorts->move($video, $previousCategoryId);
+                $video = $video->fresh();
+                $this->syncChanges->recordVideo($video);
+
+                return $video;
             });
         } catch (\Throwable $error) {
             Storage::delete(array_filter([$newVideoPath, $newCoverPath]));
@@ -117,19 +163,21 @@ class VideoController extends Controller
             Storage::delete($oldCoverPath);
         }
 
-        return response()->json(['data' => SyncPayload::video($video->fresh())]);
+        $payload = SyncPayload::video($video);
+
+        return response()->json(['data' => $payload]);
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Request $request, Video $video): JsonResponse
+    public function destroy(Video $video): JsonResponse
     {
-        $this->authorizeAdmin($request);
         $id = $video->id;
         DB::transaction(function () use ($video, $id) {
+            $this->videoSorts->deleteFor($video);
             $video->delete();
-            SyncChange::create(['entity_type' => 'video', 'entity_id' => $id, 'action' => 'delete', 'payload' => ['id' => $id]]);
+            $this->syncChanges->deleteVideo($id);
         });
 
         return response()->json(status: 204);
@@ -148,15 +196,5 @@ class VideoController extends Controller
             'cover' => ['nullable', 'image', 'max:10240'],
             'remove_cover' => ['nullable', 'boolean'],
         ]);
-    }
-
-    private function authorizeAdmin(Request $request): void
-    {
-        abort_unless($request->user()->isAdmin(), 403, 'Akses admin diperlukan.');
-    }
-
-    private function record(Video $video): void
-    {
-        SyncChange::create(['entity_type' => 'video', 'entity_id' => $video->id, 'action' => 'upsert', 'payload' => SyncPayload::video($video)]);
     }
 }

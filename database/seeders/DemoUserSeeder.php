@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\Category;
 use App\Models\SyncChange;
-use App\Models\User;
 use App\Support\SyncPayload;
 use Illuminate\Database\Seeder;
 
@@ -15,14 +14,6 @@ class DemoUserSeeder extends Seeder
      */
     public function run(): void
     {
-        User::updateOrCreate(['email' => 'admin@mega.test'], [
-            'name' => 'Mega Admin', 'username' => 'admin', 'password' => 'password', 'role' => 'admin',
-        ]);
-
-        User::updateOrCreate(['email' => 'user@mega.test'], [
-            'name' => 'Mega User', 'username' => 'user', 'password' => 'password', 'role' => 'user',
-        ]);
-
         $categories = [
             ['name' => 'Alat Tulis', 'sort_order' => 0],
         ];

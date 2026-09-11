@@ -24,13 +24,16 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken($credentials['device_name'] ?? 'flutter-app')->plainTextToken;
+        $payload = $user->apiData();
 
-        return response()->json(['token' => $token, 'user' => $user->only('id', 'name', 'username', 'role')]);
+        return response()->json(['token' => $token, 'user' => $payload]);
     }
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json(['user' => $request->user()->only('id', 'name', 'username', 'role')]);
+        $payload = $request->user()->apiData();
+
+        return response()->json(['user' => $payload]);
     }
 
     public function logout(Request $request): JsonResponse

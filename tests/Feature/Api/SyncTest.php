@@ -177,4 +177,35 @@ class SyncTest extends TestCase
             ->assertJsonCount(1, 'videos')
             ->assertJsonPath('videos.0.id', $keptVideo->id);
     }
+
+    public function test_incremental_and_bootstrap_sync_scope_prices_to_current_user(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'user',
+            'normal_price_access' => true,
+            'wholesale_price_access' => false,
+        ]);
+        Sanctum::actingAs($user);
+        $video = Video::factory()->create([
+            'normal_price' => 'VISIBLE-NORMAL',
+            'wholesale_price' => 'SECRET-WHOLESALE',
+        ]);
+        $cursor = SyncChange::max('id') ?? 0;
+        SyncChange::create([
+            'entity_type' => 'video',
+            'entity_id' => $video->id,
+            'action' => 'upsert',
+            'payload' => SyncPayload::video($video),
+        ]);
+
+        $this->getJson("/api/sync?cursor={$cursor}")
+            ->assertOk()
+            ->assertJsonPath('changes.0.payload.normal_price', 'VISIBLE-NORMAL')
+            ->assertJsonPath('changes.0.payload.wholesale_price', null)
+            ->assertJsonMissing(['wholesale_price' => 'SECRET-WHOLESALE']);
+        $this->getJson('/api/sync/bootstrap?after_video_id=0')
+            ->assertOk()
+            ->assertJsonPath('videos.0.normal_price', 'VISIBLE-NORMAL')
+            ->assertJsonPath('videos.0.wholesale_price', null);
+    }
 }

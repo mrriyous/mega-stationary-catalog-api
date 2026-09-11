@@ -27,6 +27,20 @@ class CategoryManagementTest extends TestCase
         $this->assertSame(2, Category::where('name', 'Alat Tulis')->count());
     }
 
+    public function test_creating_a_category_records_activity(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+
+        $this->postJson('/api/categories', ['name' => 'Alat Tulis'])->assertCreated();
+
+        $this->assertDatabaseHas('activity_log', [
+            'event' => 'created',
+            'subject_type' => Category::class,
+            'causer_id' => $admin->id,
+        ]);
+    }
+
     public function test_admin_soft_deletes_unused_category(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
@@ -94,5 +108,24 @@ class CategoryManagementTest extends TestCase
         $this->postJson('/api/categories', ['name' => 'Promo'])
             ->assertForbidden()
             ->assertJsonPath('message', 'Akses admin diperlukan.');
+    }
+
+    public function test_reorder_requires_every_active_category_exactly_once(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $first = Category::factory()->create();
+        $second = Category::factory()->create();
+
+        $this->postJson('/api/categories/reorder', ['ids' => [$first->id]])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Daftar kategori tidak lengkap atau tidak valid.');
+        $this->postJson('/api/categories/reorder', ['ids' => [$first->id, $first->id]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['ids.1']);
+        $this->postJson('/api/categories/reorder', ['ids' => [$second->id, $first->id]])
+            ->assertOk();
+
+        $this->assertSame(0, $second->fresh()->sort_order);
+        $this->assertSame(1, $first->fresh()->sort_order);
     }
 }

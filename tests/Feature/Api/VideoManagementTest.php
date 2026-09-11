@@ -3,8 +3,10 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Category;
+use App\Models\SyncChange;
 use App\Models\User;
 use App\Models\Video;
+use App\Services\VideoCoverService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +16,52 @@ use Tests\TestCase;
 class VideoManagementTest extends TestCase
 {
     use LazilyRefreshDatabase;
+
+    public function test_server_generates_cover_when_upload_does_not_include_one(): void
+    {
+        Storage::fake('local');
+        Storage::put('covers/generated.jpg', 'generated-cover');
+        $this->mock(VideoCoverService::class)
+            ->shouldReceive('generate')->once()->withArgs(fn (string $path) => str_starts_with($path, 'videos/'))
+            ->andReturn('covers/generated.jpg');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $category = Category::factory()->create();
+
+        $this->post('/api/videos', [
+            'category_id' => $category->id,
+            'product_code' => 'AUTO-COVER',
+            'product_name' => 'Automatic Cover',
+            'normal_price' => '10.000',
+            'wholesale_price' => '8.000',
+            'video' => UploadedFile::fake()->create('product.mp4', 10, 'video/mp4'),
+        ], ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->assertJsonPath('data.cover_extension', 'jpg');
+
+        $this->assertDatabaseHas('videos', ['product_code' => 'AUTO-COVER', 'cover_path' => 'covers/generated.jpg']);
+    }
+
+    public function test_cover_backfill_preserves_video_version_and_publishes_sync_change(): void
+    {
+        Storage::fake('local');
+        Storage::put('covers/backfill.jpg', 'generated-cover');
+        $video = Video::factory()->create(['cover_path' => null]);
+        $updatedAt = $video->updated_at->toISOString();
+        $this->mock(VideoCoverService::class)
+            ->shouldReceive('generate')->once()->with($video->video_path)
+            ->andReturn('covers/backfill.jpg');
+
+        $this->artisan('video-covers:generate')->assertSuccessful();
+
+        $this->assertSame($updatedAt, $video->fresh()->updated_at->toISOString());
+        $this->assertSame('covers/backfill.jpg', $video->fresh()->cover_path);
+        $this->assertDatabaseHas('sync_changes', [
+            'entity_type' => 'video',
+            'entity_id' => $video->id,
+            'action' => 'upsert',
+        ]);
+        $this->assertSame('jpg', SyncChange::latest('id')->first()->payload['cover_extension']);
+    }
 
     public function test_admin_can_upload_video_and_listing_reports_server_data(): void
     {
@@ -83,6 +131,7 @@ class VideoManagementTest extends TestCase
         Video::factory()->for($promo)->create([
             'product_code' => 'BOOK-PROMO',
             'product_name' => 'Paket Promo',
+            'description' => 'Tinta permanent spesial',
         ]);
 
         $this->getJson("/api/videos?category_id={$stationery->id}&search=book&per_page=1")
@@ -95,6 +144,35 @@ class VideoManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.product_code', 'PEN-001');
+
+        $this->getJson('/api/videos?search=permanent')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.product_code', 'BOOK-PROMO');
+    }
+
+    public function test_regular_user_never_receives_the_forbidden_price_tier(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'user',
+            'normal_price_access' => false,
+            'wholesale_price_access' => true,
+        ]);
+        Sanctum::actingAs($user);
+        $video = Video::factory()->create([
+            'normal_price' => 'SECRET-NORMAL',
+            'wholesale_price' => 'VISIBLE-WHOLESALE',
+        ]);
+
+        $this->getJson('/api/videos')
+            ->assertOk()
+            ->assertJsonPath('data.0.normal_price', null)
+            ->assertJsonPath('data.0.wholesale_price', 'VISIBLE-WHOLESALE')
+            ->assertJsonMissing(['normal_price' => 'SECRET-NORMAL']);
+        $this->getJson("/api/videos/{$video->id}")
+            ->assertOk()
+            ->assertJsonPath('data.normal_price', null)
+            ->assertJsonPath('data.wholesale_price', 'VISIBLE-WHOLESALE');
     }
 
     public function test_category_listing_reports_live_server_video_counts(): void

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SyncChange;
+use App\Models\Video;
+use App\Support\SyncPayload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,32 +17,58 @@ class SyncController extends Controller
 
         $cursor = (int) ($data['cursor'] ?? 0);
 
-        $latestVideoChangeIds = SyncChange::query()
+        $latestCompactChangeIds = SyncChange::query()
             ->selectRaw('MAX(id)')
             ->where('id', '>', $cursor)
-            ->where('entity_type', 'video')
-            ->groupBy('entity_id');
+            ->whereIn('entity_type', ['video', 'video_sort'])
+            ->groupBy('entity_type', 'entity_id');
 
         $changes = SyncChange::query()
             ->where('id', '>', $cursor)
-            ->where(function ($query) use ($latestVideoChangeIds) {
-                $query->where('entity_type', '!=', 'video')
-                    ->orWhereIn('id', $latestVideoChangeIds);
+            ->where(function ($query) use ($latestCompactChangeIds) {
+                $query->whereNotIn('entity_type', ['video', 'video_sort'])
+                    ->orWhereIn('id', $latestCompactChangeIds);
             })
             ->orderBy('id')
             ->limit(200)
             ->get();
+        $videos = Video::query()
+            ->whereIn('id', $changes->where('entity_type', 'video')->where('action', 'upsert')->pluck('entity_id'))
+            ->get()
+            ->keyBy('id');
 
-        return response()->json([
-            'changes' => $changes->map(fn (SyncChange $change) => [
+        $nextCursor = $changes->last()?->id ?? $cursor;
+        $hasMore = $changes->count() === 200;
+        $data = $changes->map(function (SyncChange $change) use ($request, $videos) {
+            $video = null;
+            if ($change->entity_type === 'video' && $change->action === 'upsert') {
+                $video = $videos->get($change->entity_id);
+            }
+            $action = $change->action;
+            if ($change->entity_type === 'video' && ! $video) {
+                $action = 'delete';
+            }
+            if ($video) {
+                $payload = SyncPayload::video($video, $request->user());
+            } elseif ($change->entity_type === 'video') {
+                $payload = ['id' => $change->entity_id];
+            } else {
+                $payload = $change->payload;
+            }
+
+            return [
                 'cursor' => $change->id,
                 'entity_type' => $change->entity_type,
                 'entity_id' => $change->entity_id,
-                'action' => $change->action,
-                'payload' => $change->payload,
-            ]),
-            'next_cursor' => $changes->last()?->id ?? $cursor,
-            'has_more' => $changes->count() === 200,
+                'action' => $action,
+                'payload' => $payload,
+            ];
+        });
+
+        return response()->json([
+            'changes' => $data,
+            'next_cursor' => $nextCursor,
+            'has_more' => $hasMore,
         ]);
     }
 }

@@ -32,10 +32,12 @@ final class SyncPayload
             'normal_price' => $canViewNormal ? $video->normal_price : null,
             'wholesale_price' => $canViewWholesale ? $video->wholesale_price : null,
             'video_size_bytes' => $video->video_size_bytes,
+            'video_file_available' => $video->video_file_available,
+            'cover_file_available' => $video->cover_file_available,
             'video_extension' => pathinfo($video->video_path, PATHINFO_EXTENSION),
             'cover_extension' => $video->cover_path ? pathinfo($video->cover_path, PATHINFO_EXTENSION) : null,
             'video_url' => route('videos.download', $video, false),
-            'cover_url' => $video->cover_path
+            'cover_url' => $video->cover_path && $video->cover_file_available
                 ? route('videos.cover', $video, false)
                 : null,
             'updated_at' => $video->updated_at?->toISOString(),

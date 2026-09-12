@@ -21,6 +21,11 @@ class MediaStorageService
         }
     }
 
+    public function exists(string $path): bool
+    {
+        return $this->disk()->exists($path);
+    }
+
     public function response(string $path, string $filename, bool $download = false): RedirectResponse
     {
         abort_unless($this->disk()->exists($path), 404);

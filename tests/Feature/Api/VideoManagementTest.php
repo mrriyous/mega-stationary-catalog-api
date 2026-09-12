@@ -242,6 +242,58 @@ class VideoManagementTest extends TestCase
         $this->getJson("/api/videos/{$video->id}")->assertNotFound();
     }
 
+    public function test_missing_video_file_is_marked_and_published_to_sync(): void
+    {
+        Storage::fake('s3');
+        Sanctum::actingAs(User::factory()->create());
+        $video = Video::factory()->create([
+            'video_path' => 'videos/missing.mp4',
+            'video_file_available' => true,
+        ]);
+
+        $this->getJson("/api/videos/{$video->id}/download")->assertNotFound();
+
+        $this->assertFalse($video->fresh()->video_file_available);
+        $change = SyncChange::query()
+            ->where('entity_type', 'video')
+            ->where('entity_id', $video->id)
+            ->latest('id')
+            ->firstOrFail();
+        $this->assertFalse($change->payload['video_file_available']);
+    }
+
+    public function test_media_audit_updates_existing_availability_and_publishes_sync(): void
+    {
+        Storage::fake('s3');
+        $available = Video::factory()->create([
+            'video_path' => 'videos/available.mp4',
+            'cover_path' => null,
+        ]);
+        $missing = Video::factory()->create([
+            'video_path' => 'videos/missing.mp4',
+            'cover_path' => 'covers/missing.jpg',
+            'video_file_available' => true,
+            'cover_file_available' => true,
+        ]);
+        Storage::disk('s3')->put($available->video_path, 'video');
+
+        $this->artisan('media:audit')
+            ->expectsOutputToContain('Checked 2')
+            ->assertSuccessful();
+
+        $available->refresh();
+        $missing->refresh();
+        $this->assertTrue($available->video_file_available);
+        $this->assertTrue($available->cover_file_available);
+        $this->assertFalse($missing->video_file_available);
+        $this->assertFalse($missing->cover_file_available);
+        $this->assertDatabaseHas('sync_changes', [
+            'entity_type' => 'video',
+            'entity_id' => $missing->id,
+            'action' => 'upsert',
+        ]);
+    }
+
     public function test_returns_422_when_video_uses_soft_deleted_category(): void
     {
         Storage::fake('s3');

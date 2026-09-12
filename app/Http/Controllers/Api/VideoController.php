@@ -82,6 +82,8 @@ class VideoController extends Controller
                     'video_path' => $videoPath,
                     'cover_path' => $coverPath,
                     'video_size_bytes' => $videoFile->getSize(),
+                    'video_file_available' => true,
+                    'cover_file_available' => $coverPath !== null,
                 ]);
                 $this->videoSorts->createFor($video);
                 $this->syncChanges->recordVideo($video);
@@ -146,6 +148,10 @@ class VideoController extends Controller
                     'video_path' => $videoPath,
                     'cover_path' => $coverPath,
                     'video_size_bytes' => $videoSize,
+                    'video_file_available' => $newVideoPath ? true : $video->video_file_available,
+                    'cover_file_available' => $coverPath === null
+                        ? true
+                        : ($newCoverPath ? true : $video->cover_file_available),
                 ]);
                 $this->videoSorts->move($video, $previousCategoryId);
                 $video = $video->fresh();

@@ -213,6 +213,44 @@ class VideoManagementTest extends TestCase
         $this->assertSame(2, Video::where('product_code', 'PRD-001')->count());
     }
 
+    public function test_replacing_video_regenerates_cover_when_no_cover_is_uploaded(): void
+    {
+        Storage::fake('s3');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $video = Video::factory()->create([
+            'video_path' => 'videos/old.mp4',
+            'cover_path' => 'covers/old.jpg',
+        ]);
+        Storage::disk('s3')->put($video->video_path, 'old-video');
+        Storage::disk('s3')->put($video->cover_path, 'old-cover');
+        Storage::disk('s3')->put('covers/generated-replacement.jpg', 'new-cover');
+        $this->mock(VideoCoverService::class)
+            ->shouldReceive('generate')
+            ->once()
+            ->withArgs(fn (string $path) => $path !== 'videos/old.mp4')
+            ->andReturn('covers/generated-replacement.jpg');
+
+        $this->post("/api/videos/{$video->id}", [
+            '_method' => 'PUT',
+            'category_id' => $video->category_id,
+            'product_code' => $video->product_code,
+            'product_name' => $video->product_name,
+            'description' => $video->description,
+            'normal_price' => $video->normal_price,
+            'wholesale_price' => $video->wholesale_price,
+            'video' => UploadedFile::fake()->create('replacement.mp4', 10, 'video/mp4'),
+        ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('data.cover_extension', 'jpg');
+
+        $video->refresh();
+        $this->assertSame('covers/generated-replacement.jpg', $video->cover_path);
+        Storage::disk('s3')->assertMissing('videos/old.mp4');
+        Storage::disk('s3')->assertMissing('covers/old.jpg');
+        Storage::disk('s3')->assertExists($video->video_path);
+        Storage::disk('s3')->assertExists($video->cover_path);
+    }
+
     public function test_admin_soft_deletes_video_and_keeps_media_files(): void
     {
         Storage::fake('s3');

@@ -125,12 +125,15 @@ class VideoController extends Controller
         $oldVideoPath = $video->video_path;
         $oldCoverPath = $video->cover_path;
         $previousCategoryId = (int) $video->category_id;
-        if (! $newCoverPath && ($removeCover || ! $oldCoverPath)) {
+        if (! $newCoverPath && ($newVideoPath || $removeCover || ! $oldCoverPath)) {
             try {
                 $newCoverPath = $this->videoCovers->generate($newVideoPath ?? $oldVideoPath);
                 $removeCover = false;
             } catch (\Throwable $error) {
                 SystemErrorLogger::record($error, $request);
+                if ($newVideoPath) {
+                    $removeCover = true;
+                }
             }
         }
 

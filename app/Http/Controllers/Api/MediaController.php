@@ -4,25 +4,24 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Video;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use App\Services\MediaStorageService;
+use Symfony\Component\HttpFoundation\Response;
 
 class MediaController extends Controller
 {
-    public function video(Video $video): BinaryFileResponse
+    public function __construct(private readonly MediaStorageService $media) {}
+
+    public function video(Video $video): Response
     {
-        abort_unless(Storage::exists($video->video_path), 404);
-        $path = Storage::path($video->video_path);
         $filename = $video->product_code.'.'.pathinfo($video->video_path, PATHINFO_EXTENSION);
 
-        return response()->download($path, $filename);
+        return $this->media->response($video->video_path, $filename, true);
     }
 
-    public function cover(Video $video): BinaryFileResponse
+    public function cover(Video $video): Response
     {
-        abort_unless($video->cover_path && Storage::exists($video->cover_path), 404);
-        $path = Storage::path($video->cover_path);
+        abort_unless($video->cover_path, 404);
 
-        return response()->file($path);
+        return $this->media->response($video->cover_path, basename($video->cover_path));
     }
 }

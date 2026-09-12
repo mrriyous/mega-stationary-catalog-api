@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogShareController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ClientErrorController;
 use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\SyncBootstrapController;
 use App\Http\Controllers\Api\SyncController;
@@ -19,6 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/sync', SyncController::class);
     Route::get('/sync/bootstrap', SyncBootstrapController::class);
     Route::post('/catalog-shares', [CatalogShareController::class, 'store'])->middleware('throttle:20,1');
+    Route::post('/client-errors', ClientErrorController::class)->middleware('throttle:20,1');
 
     Route::get('/categories', [CategoryController::class, 'index']);
     Route::get('/categories/{category}', [CategoryController::class, 'show']);

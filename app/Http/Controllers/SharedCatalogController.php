@@ -6,14 +6,16 @@ use App\Models\CatalogShareLink;
 use App\Models\Category;
 use App\Models\Video;
 use App\Models\VideoSortData;
+use App\Services\MediaStorageService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class SharedCatalogController extends Controller
 {
+    public function __construct(private readonly MediaStorageService $mediaStorage) {}
+
     public function show(string $token)
     {
         $share = $this->resolve($token);
@@ -70,24 +72,21 @@ class SharedCatalogController extends Controller
         ]);
     }
 
-    public function cover(string $token, Video $video): BinaryFileResponse
+    public function cover(string $token, Video $video): Response
     {
         $share = $this->resolve($token);
         abort_unless($this->query($share)->where('videos.id', $video->id)->exists(), 404);
-        abort_unless($video->cover_path && Storage::exists($video->cover_path), 404);
-        $path = Storage::path($video->cover_path);
+        abort_unless($video->cover_path, 404);
 
-        return response()->file($path);
+        return $this->mediaStorage->response($video->cover_path, basename($video->cover_path));
     }
 
-    public function media(string $token, Video $video): BinaryFileResponse
+    public function media(string $token, Video $video): Response
     {
         $share = $this->resolve($token);
         abort_unless($this->query($share)->where('videos.id', $video->id)->exists(), 404);
-        abort_unless(Storage::exists($video->video_path), 404);
-        $path = Storage::path($video->video_path);
 
-        return response()->file($path, ['Accept-Ranges' => 'bytes']);
+        return $this->mediaStorage->response($video->video_path, basename($video->video_path));
     }
 
     private function resolve(string $token): CatalogShareLink

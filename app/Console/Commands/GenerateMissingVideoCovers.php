@@ -3,11 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\Video;
+use App\Services\MediaStorageService;
 use App\Services\SyncChangeService;
 use App\Services\VideoCoverService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class GenerateMissingVideoCovers extends Command
 {
@@ -15,7 +15,7 @@ class GenerateMissingVideoCovers extends Command
 
     protected $description = 'Generate server-side cover images from uploaded videos';
 
-    public function handle(VideoCoverService $covers, SyncChangeService $syncChanges): int
+    public function handle(VideoCoverService $covers, SyncChangeService $syncChanges, MediaStorageService $media): int
     {
         $generated = 0;
         $failed = 0;
@@ -24,7 +24,7 @@ class GenerateMissingVideoCovers extends Command
             $query->whereNull('cover_path');
         }
 
-        $query->orderBy('id')->each(function (Video $video) use ($covers, $syncChanges, &$generated, &$failed) {
+        $query->orderBy('id')->each(function (Video $video) use ($covers, $syncChanges, $media, &$generated, &$failed) {
             try {
                 $oldCoverPath = $video->cover_path;
                 $coverPath = $covers->generate($video->video_path);
@@ -33,7 +33,7 @@ class GenerateMissingVideoCovers extends Command
                 $video->timestamps = true;
                 $syncChanges->recordVideo($video->fresh());
                 if ($oldCoverPath && $oldCoverPath !== $coverPath) {
-                    Storage::delete($oldCoverPath);
+                    $media->delete($oldCoverPath);
                 }
                 $generated++;
             } catch (\Throwable $error) {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Video;
 use App\Models\VideoSortData;
+use App\Services\MediaStorageService;
 use App\Services\SyncChangeService;
 use App\Services\VideoCoverService;
 use App\Services\VideoSortService;
@@ -13,7 +14,6 @@ use App\Support\SystemErrorLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class VideoController extends Controller
@@ -22,6 +22,7 @@ class VideoController extends Controller
         private readonly VideoSortService $videoSorts,
         private readonly VideoCoverService $videoCovers,
         private readonly SyncChangeService $syncChanges,
+        private readonly MediaStorageService $mediaStorage,
     ) {}
 
     /**
@@ -65,8 +66,8 @@ class VideoController extends Controller
         $data = $this->validated($request);
         $videoFile = $request->file('video');
         $coverFile = $request->file('cover');
-        $videoPath = $videoFile->store('videos');
-        $coverPath = $coverFile?->store('covers');
+        $videoPath = $videoFile->store('videos', 's3');
+        $coverPath = $coverFile?->store('covers', 's3');
         if (! $coverPath) {
             try {
                 $coverPath = $this->videoCovers->generate($videoPath);
@@ -88,7 +89,7 @@ class VideoController extends Controller
                 return $video;
             });
         } catch (\Throwable $error) {
-            Storage::delete(array_filter([$videoPath, $coverPath]));
+            $this->mediaStorage->delete([$videoPath, $coverPath]);
             throw $error;
         }
 
@@ -117,8 +118,8 @@ class VideoController extends Controller
         $newCover = $request->file('cover');
         $removeCover = (bool) ($data['remove_cover'] ?? false);
         unset($data['remove_cover']);
-        $newVideoPath = $newVideo?->store('videos');
-        $newCoverPath = $newCover?->store('covers');
+        $newVideoPath = $newVideo?->store('videos', 's3');
+        $newCoverPath = $newCover?->store('covers', 's3');
         $oldVideoPath = $video->video_path;
         $oldCoverPath = $video->cover_path;
         $previousCategoryId = (int) $video->category_id;
@@ -153,14 +154,14 @@ class VideoController extends Controller
                 return $video;
             });
         } catch (\Throwable $error) {
-            Storage::delete(array_filter([$newVideoPath, $newCoverPath]));
+            $this->mediaStorage->delete([$newVideoPath, $newCoverPath]);
             throw $error;
         }
         if ($newVideoPath) {
-            Storage::delete($oldVideoPath);
+            $this->mediaStorage->delete($oldVideoPath);
         }
         if (($newCoverPath || $removeCover) && $oldCoverPath) {
-            Storage::delete($oldCoverPath);
+            $this->mediaStorage->delete($oldCoverPath);
         }
 
         $payload = SyncPayload::video($video);

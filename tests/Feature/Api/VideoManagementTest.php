@@ -19,7 +19,7 @@ class VideoManagementTest extends TestCase
 
     public function test_server_generates_cover_when_upload_does_not_include_one(): void
     {
-        Storage::fake('local');
+        Storage::fake('s3');
         Storage::put('covers/generated.jpg', 'generated-cover');
         $this->mock(VideoCoverService::class)
             ->shouldReceive('generate')->once()->withArgs(fn (string $path) => str_starts_with($path, 'videos/'))
@@ -43,7 +43,7 @@ class VideoManagementTest extends TestCase
 
     public function test_cover_backfill_preserves_video_version_and_publishes_sync_change(): void
     {
-        Storage::fake('local');
+        Storage::fake('s3');
         Storage::put('covers/backfill.jpg', 'generated-cover');
         $video = Video::factory()->create(['cover_path' => null]);
         $updatedAt = $video->updated_at->toISOString();
@@ -65,7 +65,7 @@ class VideoManagementTest extends TestCase
 
     public function test_admin_can_upload_video_and_listing_reports_server_data(): void
     {
-        Storage::fake('local');
+        Storage::fake('s3');
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $category = Category::create(['name' => 'Promo', 'sort_order' => 0]);
 
@@ -90,8 +90,8 @@ class VideoManagementTest extends TestCase
             'category_id' => $category->id,
         ]);
         $video = Video::where('product_code', 'PRD-001')->firstOrFail();
-        Storage::disk('local')->assertExists($video->video_path);
-        Storage::disk('local')->assertExists($video->cover_path);
+        Storage::disk('s3')->assertExists($video->video_path);
+        Storage::disk('s3')->assertExists($video->cover_path);
 
         $this->getJson('/api/videos')->assertOk()
             ->assertJsonPath('meta.total', 1)
@@ -189,7 +189,7 @@ class VideoManagementTest extends TestCase
 
     public function test_admin_can_upload_videos_with_the_same_product_code(): void
     {
-        Storage::fake('local');
+        Storage::fake('s3');
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $category = Category::factory()->create();
 
@@ -215,7 +215,7 @@ class VideoManagementTest extends TestCase
 
     public function test_admin_soft_deletes_video_and_keeps_media_files(): void
     {
-        Storage::fake('local');
+        Storage::fake('s3');
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $category = Category::factory()->create();
 
@@ -234,8 +234,8 @@ class VideoManagementTest extends TestCase
         $this->deleteJson("/api/videos/{$video->id}")->assertNoContent();
 
         $this->assertSoftDeleted($video);
-        Storage::disk('local')->assertExists($video->video_path);
-        Storage::disk('local')->assertExists($video->cover_path);
+        Storage::disk('s3')->assertExists($video->video_path);
+        Storage::disk('s3')->assertExists($video->cover_path);
         $this->getJson('/api/videos')
             ->assertOk()
             ->assertJsonPath('meta.total', 0);
@@ -244,7 +244,7 @@ class VideoManagementTest extends TestCase
 
     public function test_returns_422_when_video_uses_soft_deleted_category(): void
     {
-        Storage::fake('local');
+        Storage::fake('s3');
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $category = Category::factory()->create();
         $category->delete();
